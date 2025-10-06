@@ -22,19 +22,33 @@ jobs:
 
       - name: Deploy app to EC2
         run: |
-          ssh -i ~/.ssh/ec2_key ubuntu@${{ secrets.EC2_HOST }} << 'EOF'
-            # Go to or clone the app directory
-            cd ~/simple-node-cicd-app || git clone https://github.com/${{ github.repository }} ~/simple-node-cicd-app
+          ssh -i ~/.ssh/ec2_key -o StrictHostKeyChecking=no ubuntu@${{ secrets.EC2_HOST }} << 'EOF'
+            set -e  # Exit immediately if any command fails
+
+            # Ensure directory exists
+            mkdir -p ~/simple-node-cicd-app
             cd ~/simple-node-cicd-app
 
-            # Pull the latest code
-            git pull origin main
+            # If repo not cloned yet, clone it
+            if [ ! -d .git ]; then
+              git clone https://github.com/${{ github.repository }} .
+            else
+              git fetch origin main
+              git reset --hard origin/main
+            fi
+
+            # Install Node + PM2 if missing
+            if ! command -v npm >/dev/null 2>&1; then
+              curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+              sudo apt-get install -y nodejs
+            fi
+            sudo npm install -g pm2
 
             # Install dependencies
             npm install
 
             # Restart the app using PM2
-            pm2 stop node-app || true
+            pm2 delete node-app || true
             pm2 start server.js --name node-app
             pm2 save
           EOF
