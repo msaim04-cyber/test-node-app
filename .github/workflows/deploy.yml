@@ -1,0 +1,40 @@
+name: Deploy to EC2
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/ec2_key
+          chmod 600 ~/.ssh/ec2_key
+          ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Deploy app to EC2
+        run: |
+          ssh -i ~/.ssh/ec2_key ubuntu@${{ secrets.EC2_HOST }} << 'EOF'
+            # Go to or clone the app directory
+            cd ~/simple-node-cicd-app || git clone https://github.com/${{ github.repository }} ~/simple-node-cicd-app
+            cd ~/simple-node-cicd-app
+
+            # Pull the latest code
+            git pull origin main
+
+            # Install dependencies
+            npm install
+
+            # Restart the app using PM2
+            pm2 stop node-app || true
+            pm2 start server.js --name node-app
+            pm2 save
+          EOF
