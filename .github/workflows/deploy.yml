@@ -1,0 +1,36 @@
+name: Deploy to EC2 with Docker
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/ec2_key
+          chmod 600 ~/.ssh/ec2_key
+          ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Deploy to EC2
+        run: |
+          ssh -i ~/.ssh/ec2_key -o StrictHostKeyChecking=no ubuntu@${{ secrets.EC2_HOST }} << 'EOF'
+            set -e
+            cd ~/app || git clone https://github.com/${{ github.repository }} ~/app
+            cd ~/app
+            git pull origin main
+
+            # Build and run the Docker container
+            sudo docker build -t node-app .
+            sudo docker stop node-app || true
+            sudo docker rm node-app || true
+            sudo docker run -d -p 3000:3000 --name node-app node-app
+          EOF
